@@ -57,19 +57,8 @@ function decomposition()
     plot(Samples_y(30,:), 'b');
     hold on;
     plot(Samples_y(40,:), 'g');
-
-%     plot_x = 1:length(ffd);
-%     plot_y = [];
-%     for i=1:length(ffd)
-%         if sum(any(i==Samples_x))
-%             plot_y = [plot_y, ffd(i)];
-%         else
-%             plot_y = [plot_y, 0];
-%         end
-%     end
-% 	subplot(4,1,4)
-% 	plot(plot_y(1:L));
-% 	title('plot all peaks ')
+    hold on;
+    plot(Samples_y(50,:), 'y');
 
 	% Mixture of Gaussian models. [GMM]
 	% options = statset('Display', 'final');
@@ -82,6 +71,18 @@ function decomposition()
 	% 		obj = fitgmdist(Samples_y, k,'options', options, 'Regularize', 0.1);
 	% 	end
 	% end
+
+
+
+
+
+
+
+
+
+
+
+
 
 % function description
 % to get the ultimate samples matrix
