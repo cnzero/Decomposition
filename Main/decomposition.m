@@ -20,7 +20,8 @@ function decomposition()
 	end
 
 	%- Compute the threshold value.
-	hold_value = 1*sqrt(sum(fd.^2)/length(fd));
+	C = 1.5;
+	hold_value = C*sqrt(sum(fd.^2)/length(fd));
 
 	ffd = [];
 	for a=1:length(fd)
@@ -31,54 +32,72 @@ function decomposition()
 		end
 	end
 
+	L = floor(length(rd)/3);
 	subplot(4,1,1)
-	plot(rd)
-	title('raw data')
+	plot(rd(1:L))
+	title('raw data of one channel')
 
 	subplot(4,1,2)
-	plot(fd)
+	plot(fd(1:L))
 	title('filted data with two orders')
 
 	subplot(4,1,3)
-	plot(ffd)
+	plot(ffd(1:L))
 	title('filted data with threshold')
 
 	% Peaklist(fd, hold_value);
-	[Samples_x, Samples_y] = Peaklist(ffd, hold_value);
+	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 8);
+    
+%     plot some samples to check the results
+    figure
+    plot(Samples_y(10, :), 'r');
+    hold on;
+    plot(Samples_y(20,:), 'k');
+    hold on;
+    plot(Samples_y(30,:), 'b');
+    hold on;
+    plot(Samples_y(40,:), 'g');
 
-	plot_x = reshape(Samples_x', 1,[]);
-	plot_y = reshape(Samples_y', 1,[]);
-	subplot(4,1,4)
-	% scatter(plot_x, plot_y, '.');
-	title('plot all peaks ')
+%     plot_x = 1:length(ffd);
+%     plot_y = [];
+%     for i=1:length(ffd)
+%         if sum(any(i==Samples_x))
+%             plot_y = [plot_y, ffd(i)];
+%         else
+%             plot_y = [plot_y, 0];
+%         end
+%     end
+% 	subplot(4,1,4)
+% 	plot(plot_y(1:L));
+% 	title('plot all peaks ')
 
 	% Mixture of Gaussian models. [GMM]
-	options = statset('Display', 'final');
-	for k=1:10
-		k
-		try
-			obj = fitgmdist(Samples_y, k,'options', options)
-		catch exception
-			error = exception.message
-			obj = fitgmdist(Samples_y, k,'options', options, 'Regularize', 0.1)
-		end
-	end
+	% options = statset('Display', 'final');
+	% for k=1:10
+	% 	% k
+	% 	try
+	% 		obj = fitgmdist(Samples_y, k,'options', options);
+	% 	catch exception
+	% 		error = exception.message;
+	% 		obj = fitgmdist(Samples_y, k,'options', options, 'Regularize', 0.1);
+	% 	end
+	% end
 
 % function description
-% to get hte ultimate samples matrix
+% to get the ultimate samples matrix
 %    Peaks1
 % 	 Peaks2
 % 	 Peaks3
 % 	 ......
-% 	 Peaks_q  --->qx8
+% 	 Peaks_q  --->qxn
 
 % Input:
 %		the filted raw EMG data.
 % Output:
 % 		the ultimate samples matrix: x,y
-function [MUAPx, MUAPy] = Peaklist(alist, hold_value)
+function [MUAPx, MUAPy] = Peaklist(alist, hold_value, n)
 	%-Mix the up and down peaks 
-	[up_peak_index, down_peak_index] = Peaks(alist, hold_value);
+	[up_peak_index, down_peak_index] = PeaksCrossPoints(alist, hold_value);
 	
 	%--qx2
 	%-mixing the upper and down peaks with the right order.
@@ -87,32 +106,43 @@ function [MUAPx, MUAPy] = Peaklist(alist, hold_value)
 
 	%-remove all zero-pair.
 	% zero elements locates in the front part.
+	% --1 method
 	non_zero_index = 1;
 	while(peaks_index(non_zero_index,1)==0)
 		non_zero_index = non_zero_index + 1;
 	end
-
+	% slicing
 	peaks_index = peaks_index(non_zero_index:size(peaks_index,1),:);
 
 	MUAPx = []; % qx8
 	MUAPy = [];	% qx8
 	% from [strat_point end_point] to samples matrix.
 	for i=1:size(peaks_index,1)
-		Xs = Peaks_8(alist, peaks_index(i,1), peaks_index(i,2));
-		Ys = [];
-
-		for j=1:8
-			Ys = [Ys, alist(Xs(j))];
-		end
+		Xs = Peaks_n(alist, peaks_index(i,1), peaks_index(i,2), n);
 		MUAPx = [MUAPx;
 				 Xs];
-		MUAPy = [MUAPy;
-				 Ys];
+	end
+	% overlapping cancle
+    n_row = size(MUAPx, 1);
+    MUAPx = Overlap(alist, MUAPx, n);
+    new_n_row = size(MUAPx, 1);
+    while ( n_row ~= (new_n_row+1) )
+        n_row = size(MUAPx, 1);
+        MUAPx = Overlap(alist, MUAPx, n);
+        new_n_row = size(MUAPx, 1);
+    end
+	% ready to get MUAPy on position MUAPx
+	for i=1:size(MUAPx, 1)
+		y_row = [];
+		for j=1:size(MUAPx, 2)
+			y = alist(MUAPx(i,j));
+			y_row = [y_row, y];
+		end
+		MUAPy = [MUAPy; ...
+				 y_row];
 	end
 
-
-
-%-function description
+%------------------Function description
 % find the upper peaks
 % find the down peaks
 %-Input: a sequent signal(t)
@@ -121,7 +151,7 @@ function [MUAPx, MUAPy] = Peaklist(alist, hold_value)
 % 	 x coordinates
 %	 up_cross_p-->nx2[startp, endp], every row contains two cross point above hold_value
 %	down_cross_p->nx2[startp, endp], every row contains two cross points under hold_value
-function [up_cross_p, down_cross_p] = Peaks(alist, hold_value)
+function [up_cross_p, down_cross_p] = PeaksCrossPoints(alist, hold_value)
 	L = length(alist);
 	up_cross_p = zeros(L,2);
 	down_cross_p = zeros(L,2);
@@ -182,8 +212,8 @@ function newlist = AbstractNonZero(alist)
 % Input:
 % 		all peaks lists
 % Output:
-% 		trimmed peaks x coordinate lists with length 8.
-function peak_array = Peaks_8(alist, startp, endp)
+% 		trimmed peaks x coordinate lists with length n.
+function peak_array = Peaks_n(alist, startp, endp, n)
 	max_value = alist(startp);
 	max_index = startp;
 	for i=startp+1:endp
@@ -192,11 +222,45 @@ function peak_array = Peaks_8(alist, startp, endp)
 			max_index = i;
 		end
 	end
-	peak_array = [max_index-3, ...
-				  max_index-2, ...
-				  max_index-1, ...
-				  max_index, ...
-				  max_index+1, ...
-				  max_index+2, ...
-				  max_index+3, ...
-				  max_index+4];
+	peak_array = [];
+	if mod(n, 2)==0
+		% even_number
+		sp = max_index - (n/2 - 1);
+		ep = max_index + n/2;
+	else
+		% odd_number
+		sp = max_index - floor(n/2);
+		ep = max_index + floor(n/2);
+	end
+	peak_array = sp : ep;
+
+
+% --------------Function description
+% Input:
+% 		Xs, index points of passing through threshold_value
+% 				nx2
+% 		n, 	the width of the peaks, generally 8 points
+% Output:
+% 		new_Xs, index points of passing through threshold_value
+% 						 after trimming
+%				mx2, m < n 					
+function new_Xs = Overlap(alist, Xs, n)
+	% part of matrix Xs
+    % 9384        9385        9386        9387        9388        9389        9390        9391
+    % 9430        9431        9432        9433        9434        9435        9436        9437
+    % 9432        9433        9434        9435        9436        9437        9438        9439
+    % 9438        9439        9440        9441        9442        9443        9444        9445
+	new_Xs = [];
+    i = 1;
+	while ( i<=(size(Xs,1)-1) )
+		% Overlap happends
+		if (Xs(i, n)) > Xs(i+1, 1)
+			new_x = Peaks_n(alist, Xs(i, 1), Xs(i+1, n), n);
+            i = i+1;
+        else
+            new_x = Xs(i,:);
+		end 
+		new_Xs = [new_Xs; ...
+				  new_x];
+        i = i+1;
+	end
