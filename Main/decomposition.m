@@ -1,10 +1,8 @@
-function Samples_y = decomposition()
+function movement_data = decomposition()
 	clear,close all,clc
 	channel = 1; % based on the single channel recognition.
 	
 	H = load('BasicInform.mat');
-	%-Its head and tail have been cut.
-	%-Three parts with the same movement have been connected.
 
 	%----Database seems to be very necessary.----------
 
@@ -20,7 +18,7 @@ function Samples_y = decomposition()
 	end
 
 	%- Compute the threshold value.
-	C = 1.5;
+	C = 1.2;
 	hold_value = C*sqrt(sum(fd.^2)/length(fd));
 
 	ffd = [];
@@ -32,17 +30,17 @@ function Samples_y = decomposition()
 		end
 	end
 
-	L = floor(length(rd)/3);
+	% L = floor(length(rd)/3);
 	subplot(4,1,1)
-	plot(rd(1:L))
+	plot(rd)
 	title('raw data of one channel')
 
 	subplot(4,1,2)
-	plot(fd(1:L))
+	plot(fd)
 	title('filted data with two orders')
 
 	subplot(4,1,3)
-	plot(ffd(1:L))
+	plot(ffd)
 	title('filted data with threshold')
 
 	% Peaklist(fd, hold_value);
@@ -67,41 +65,46 @@ function Samples_y = decomposition()
 	% Mixture of Gaussian models. [GMM]
 	options = statset('Display', 'final', 'MaxIter',5);
 	save('data.mat', 'Samples_y');
-	% for k=2:10
-	% 	% k
-	% 	try
-	% 		obj = fitgmdist(Samples_y, k, 'Regularize', 0.00001, 'options', options)
-	% 		disp('Everything goes well.');
-
-	% 	catch exception
-	% 		disp('Something wrong.');
-	% 		error = exception.message
-	% 		obj = fitgmdist(Samples_y, k,'options', options)
-	% 	end
-	% end
+	
 
 	% GMmodel = fitgmdist(Samples_y, 5)
 	% When you directly compute GMM as above, ill-conditioned covariance happends.
 	% Reason-1: some of the predictors of your data are highly correlated.
-	% Solution: PCA for decoupling
+	% Solution: PCA for decoupling in GMM
 	coeff = pca(Samples_y);
 	Samples_y_pca = Samples_y * coeff;
-	% cov(Samples_y_pca)
-	% It did follow that diagonal elements are not equal to zero, the other zero.
-	% GMmodel = fitgmdist(Samples_y_pca, 2, 'options', options)
-	% GMmodel = fitgmdist(Samples_y, 3, 'Regularize', 0.01)
-	% size(Samples_y)
-	% idx = cluster(GMmodel, Samples_y)
+	
+	% kmeans - 
+	% no need for PCA decoupling
+	n_c = 5; % -- number of classes
+	[idx, center, distance_within] = kmeans(Samples_y, 5);
+	% length(find(idx1==2))
 
-	idx = kmeans(Samples_y, 5);
+	% decomposition to 5 MUAP sequences
+	% Samples_x, qxn
+	% Samples_y, qxn
+	% every spike, 1xn,
+	% n_c
+	% idx, qx1
+	[q, n] = size(Samples_y);
+	MUAP = zeros(length(fd), n_c);
+	% 192642x5
 
+	for i=1:q
+		spike = Samples_y(i, :)';
+		% nx1
+		x = Samples_x(i,:)';
+		% nx1
+		MUAP(x, idx(i)) = spike;
+	end
 
-
-
-
-
-
-
+	% % draw these MUAPs
+	% figure
+	% for c=1:n_c
+	% 	subplot(n_c, 1, c);
+	% 	plot(MUAP(:, c));
+	% end
+	movement_data = clipping(MUAP');
 
 
 
@@ -288,3 +291,46 @@ function new_Xs = Overlap(alist, Xs, n)
 				  new_x];
         i = i+1;
 	end
+
+
+% clipping data
+function movement_data = clipping(alist)
+	% alist, 5x192000
+	n_mv = 5; % 5 kinds of movements
+	time_1mv = 4; % 4 secondes for each movement
+	n_repeat = 3; % repeat 3 times
+	
+	[n_ch, total_L] = size(alist);
+	n_1second = floor(total_L/(n_mv - 1) / n_repeat / 2 /time_1mv)
+	% 		  ~ 2000 HZ
+
+	part_clipped = floor(n_1second * 0.4); % head and tail are removed.
+
+
+	% output: movement_data, 5x1, cell
+	movement_data = cell(5,1);
+	% rest
+	% grasp
+	% open
+	% index
+	% middle
+	n_part = (n_mv - 1) * n_repeat * 2;
+	% 24 = 4 * 3 * 2 -- seconds
+	for pt=0:n_part-2
+		slice = alist(:,   pt*time_1mv*n_1second+part_clipped : ...
+			           (pt+1)*time_1mv*n_1second-part_clipped);
+		% slice of 4 secodes with head and tail clipped. 
+		if mod(pt,2)==0
+			% 1, rest
+			movement_data{1} = [movement_data{1}, slice];
+		else
+			% 2, grasp
+			% 3, open
+			% 4, index
+			% 5, middle
+			seq = ceil(mod(pt, 8)/2) + 1;
+			movement_data{seq} = [movement_data{seq}, slice];
+		end
+	end
+
+	% over
