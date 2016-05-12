@@ -12,23 +12,23 @@ SIGMA2 = [2 0; ...
 
 % generate data from a mixture of two bivariate Gaussian distributions
 % using the mvnrnd function.
-X = [mvnrnd(MU1, SIGMA1, 1000); ...
-	 mvnrnd(MU2, SIGMA2, 1000)];
+X = [mvnrnd(MU1, SIGMA1, 10); ...
+	 mvnrnd(MU2, SIGMA2, 10)];
 scatter(X(:,1), X(:,2), 10, '.');
 hold on;
 
 % %To fit a Gaussian mixture distribution model to data.
 % %Use function [fitgmdist]
 options = statset('Display', 'final');
-obj = fitgmdist(X, 2, 'options', options);
+obj = fitgmdist(X, 2, 'options', options)
 % with 2 clusters, the log-likelihood value is smalles.
 h = ezcontour(@(x,y)pdf(obj, [x,y]), [-8 6], [-8 6]);
 
 
 % % classification and visualization
-% idx = cluster(obj, X);
-% cluster1 = (idx==1);
-% cluster2 = (idx==2);
+idx = cluster(obj, X);
+cluster1 = (idx==1);
+cluster2 = (idx==2);
 
 % figure
 % scatter(X(cluster1, 1), X(cluster1, 2), 10, 'r+');
@@ -67,10 +67,10 @@ h = ezcontour(@(x,y)pdf(obj, [x,y]), [-8 6], [-8 6]);
 % plot(1:size(X,1), P2(order, 1), 'r-', 1:size(X,1), P2(order, 2), 'b-');
 
 
-% Assign New Data to Clusters
-Y = [mvnrnd(MU1, SIGMA1, 50); ...
-	 mvnrnd(MU2, SIGMA2, 25)];
-idx = cluster(gm, Y);
+% % Assign New Data to Clusters
+% Y = [mvnrnd(MU1, SIGMA1, 50); ...
+% 	 mvnrnd(MU2, SIGMA2, 25)];
+% idx = cluster(gm2, Y);
 
 
 

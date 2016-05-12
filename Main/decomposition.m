@@ -1,4 +1,4 @@
-function decomposition()
+function Samples_y = decomposition()
 	clear,close all,clc
 	channel = 1; % based on the single channel recognition.
 	
@@ -46,7 +46,7 @@ function decomposition()
 	title('filted data with threshold')
 
 	% Peaklist(fd, hold_value);
-	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 8);
+	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 16);
     
 %     plot some samples to check the results
     figure
@@ -59,18 +59,41 @@ function decomposition()
     plot(Samples_y(40,:), 'g');
     hold on;
     plot(Samples_y(50,:), 'y');
+    hold on;
+	plot(Samples_y(60,:), 'c');
+	hold on;
+	plot(Samples_y(70,:), 'm');
 
 	% Mixture of Gaussian models. [GMM]
-	% options = statset('Display', 'final');
-	% for k=1:10
+	options = statset('Display', 'final', 'MaxIter',5);
+	save('data.mat', 'Samples_y');
+	% for k=2:10
 	% 	% k
 	% 	try
-	% 		obj = fitgmdist(Samples_y, k,'options', options);
+	% 		obj = fitgmdist(Samples_y, k, 'Regularize', 0.00001, 'options', options)
+	% 		disp('Everything goes well.');
+
 	% 	catch exception
-	% 		error = exception.message;
-	% 		obj = fitgmdist(Samples_y, k,'options', options, 'Regularize', 0.1);
+	% 		disp('Something wrong.');
+	% 		error = exception.message
+	% 		obj = fitgmdist(Samples_y, k,'options', options)
 	% 	end
 	% end
+
+	% GMmodel = fitgmdist(Samples_y, 5)
+	% When you directly compute GMM as above, ill-conditioned covariance happends.
+	% Reason-1: some of the predictors of your data are highly correlated.
+	% Solution: PCA for decoupling
+	coeff = pca(Samples_y);
+	Samples_y_pca = Samples_y * coeff;
+	% cov(Samples_y_pca)
+	% It did follow that diagonal elements are not equal to zero, the other zero.
+	% GMmodel = fitgmdist(Samples_y_pca, 2, 'options', options)
+	% GMmodel = fitgmdist(Samples_y, 3, 'Regularize', 0.01)
+	% size(Samples_y)
+	% idx = cluster(GMmodel, Samples_y)
+
+	idx = kmeans(Samples_y, 5);
 
 
 
