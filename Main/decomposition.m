@@ -1,6 +1,6 @@
-function movement_data = decomposition()
+function training_accuracy = decomposition()
 	clear,close all,clc
-	channel = 1; % based on the single channel recognition.
+	channel = 4; % based on the single channel recognition.
 	
 	H = load('BasicInform.mat');
 
@@ -18,7 +18,7 @@ function movement_data = decomposition()
 	end
 
 	%- Compute the threshold value.
-	C = 1.2;
+	C = 1.5;
 	hold_value = C*sqrt(sum(fd.^2)/length(fd));
 
 	ffd = [];
@@ -44,7 +44,7 @@ function movement_data = decomposition()
 	title('filted data with threshold')
 
 	% Peaklist(fd, hold_value);
-	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 16);
+	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 8);
     
 %     plot some samples to check the results
     figure
@@ -105,6 +105,12 @@ function movement_data = decomposition()
 	% 	plot(MUAP(:, c));
 	% end
 	movement_data = clipping(MUAP');
+	% 5x1, cell
+	FM = FMmatrix(movement_data);
+	% 5x1, cell
+
+	% LDA to verify the training set accuracy.
+	training_accuracy = LDA_classfy(FM);
 
 
 
@@ -301,7 +307,7 @@ function movement_data = clipping(alist)
 	n_repeat = 3; % repeat 3 times
 	
 	[n_ch, total_L] = size(alist);
-	n_1second = floor(total_L/(n_mv - 1) / n_repeat / 2 /time_1mv)
+	n_1second = floor(total_L/(n_mv - 1) / n_repeat / 2 /time_1mv);
 	% 		  ~ 2000 HZ
 
 	part_clipped = floor(n_1second * 0.4); % head and tail are removed.
@@ -333,4 +339,149 @@ function movement_data = clipping(alist)
 		end
 	end
 
-	% over
+function FM = FMmatrix(movement_data)
+	n_mv = size(movement_data);
+	% 5x1, cell
+	% movement_data{n},
+	% 5x19263
+
+	FM = cell(5,1);
+	% FM{n}
+	% 5M x p
+	% 5, number of features
+	% 	IAV, MAX, NonZeroMed, SemiEny1, SemiEny2, 
+	% M, number of MUAP
+	% p, number of time windows
+
+	for n=1:n_mv
+		long = size(movement_data{n}, 2);
+		LW = 128; % length of time window
+		LI = 64;  % length of increase window
+		n_windows = floor(1+(long-LW)/LI);
+
+		f_p = [];
+		for nw=0:n_windows-1
+			data = movement_data{n}(:, nw*LI+1:nw*LI+LW);
+			% Mx128
+			M = size(data,1);
+			f_ch = [];
+			for ch=1:M
+				f_ch = [f_ch; ...
+						IAV(data(ch,:)); ...
+						MAX(data(ch,:)); ...
+						NonZeroMed(data(ch,:)); ...
+						SemiEny1(data(ch,:)); ...
+						SemiEny2(data(ch,:))];
+			end
+			f_p = [f_p, f_ch];
+		end
+		FM{n} = f_p; 
+	end
+
+
+% Functions of feature extraction
+function f = IAV(data)
+	% data, 1x128
+	f = sum(abs(data))/length(data);
+
+function f = MAX(data)
+	% data, 1x128
+	f = max(abs(data));
+
+function f = NonZeroMed(data)
+	% data, 1x128
+% 	f = median(data(data~=0));
+%     always return NaN,if data = zeros(1,128);
+    f = median(data);
+
+function f = SemiEny1(data)
+	% data, 1x128
+	N = length(data);
+
+	f = sum(data(1:floor(N/2)).^2);
+
+function f = SemiEny2(data)
+	% data, 1x128
+	N = length(data);
+
+	f = sum(data(floor(N/2)+1:end).^2);
+
+function accuracy = LDA_classfy(FM)
+	% FM, 5x1, cell
+	% 1. rest, 25x1202
+	% 2. grasp,25x299
+	% 3. open, 25x299
+	% 4. index,25x299
+	% 5. middle25x199
+
+	% -------xSw
+	n_mv = length(FM);
+	[a, b] = size(FM{1});
+	% 25x1202
+	xSw = zeros(a,a);
+	SUM = zeros(1, a);
+	center = zeros(n_mv, a);
+
+	specimen_counts = 0;
+	for mv=1:n_mv
+		center(mv, :) = mean(FM{mv}');
+		temp = FM{mv}' - repmat(mean(FM{mv}'), size(FM{mv}, 2), 1);
+		specimen_counts = specimen_counts + size(FM{mv}, 2);
+		xSw = xSw + temp'*temp;
+		SUM = SUM + sum(FM{mv}', 1);
+	end
+	Xmeans = SUM/specimen_counts;
+
+
+	% --------xSb
+	xSb = zeros(a, a);
+	for mv=1:n_mv
+		temp = mean(FM{mv}') - Xmeans;
+		xSb = xSb + temp'*temp;
+	end
+
+	% LDA algorithm
+	[V, D] = eig(xSb, xSw);
+	val = diag(D);
+	val(imag(val)~=0, 1) = 0;
+	[~, idx] = sort(val, 'descend');
+
+	DIM = 4;
+	LDA_A = zeros(a, DIM);
+	for i=1:DIM
+		LDA_A(:,i) = V(:, idx(i));
+	end
+
+	LDA_center = center * LDA_A;
+
+	% LDA_A, 
+	% dimension-reduction matrix
+	% LDA_center, 
+	% reduced centers
+
+
+	% verification
+	right = 0;
+	total = 0;
+	for mv=1:n_mv
+		for n=1:size(FM{mv}, 2)
+			sample = FM{mv}(:, n);
+			sample = sample';
+			% 1x25
+			reduced_sample = sample * LDA_A;
+			% label results
+			distance = [];
+			for v=1:n_mv
+				distance = [distance; ...
+							norm(LDA_center(v, :) - reduced_sample)];
+			end
+			[~, label] = min(distance);
+
+			total = total + 1;
+			if label == mv
+				right = right + 1;
+			end
+		end
+	end
+
+	accuracy = right/total;
