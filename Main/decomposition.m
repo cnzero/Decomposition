@@ -1,6 +1,6 @@
-function training_accuracy = decomposition()
+function [FM, training_accuracy] = decomposition()
 	clear,close all,clc
-	channel = 4; % based on the single channel recognition.
+	channel = 1; % based on the single channel recognition.
 	
 	H = load('BasicInform.mat');
 
@@ -44,7 +44,7 @@ function training_accuracy = decomposition()
 	title('filted data with threshold')
 
 	% Peaklist(fd, hold_value);
-	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 8);
+	[Samples_x, Samples_y] = Peaklist(ffd, hold_value, 32);
     
 %     plot some samples to check the results
     figure
@@ -63,8 +63,8 @@ function training_accuracy = decomposition()
 	plot(Samples_y(70,:), 'm');
 
 	% Mixture of Gaussian models. [GMM]
-	options = statset('Display', 'final', 'MaxIter',5);
-	save('data.mat', 'Samples_y');
+	% options = statset('Display', 'final', 'MaxIter',5);
+	% save('data.mat', 'Samples_y');
 	
 
 	% GMmodel = fitgmdist(Samples_y, 5)
@@ -77,8 +77,21 @@ function training_accuracy = decomposition()
 	% kmeans - 
 	% no need for PCA decoupling
 	n_c = 5; % -- number of classes
-	[idx, center, distance_within] = kmeans(Samples_y, 5);
+	[idx, center, distance_within] = kmeans(Samples_y, n_c);
 	% length(find(idx1==2))
+
+	% figure templates of M MUAPs
+	class_label = cell(n_c, 1);
+	figure
+	for m=1:n_c
+		class_label{m} = Samples_y(idx==m, :);
+		subplot(3,2,m);
+		for s=1:size(class_label{m}, 1)
+			plot(class_label{m}(s,:));
+			hold on;
+		end
+	end
+
 
 	% decomposition to 5 MUAP sequences
 	% Samples_x, qxn
@@ -356,7 +369,7 @@ function FM = FMmatrix(movement_data)
 	for n=1:n_mv
 		long = size(movement_data{n}, 2);
 		LW = 128; % length of time window
-		LI = 64;  % length of increase window
+		LI = 64;%length of increase window
 		n_windows = floor(1+(long-LW)/LI);
 
 		f_p = [];
@@ -440,17 +453,11 @@ function accuracy = LDA_classfy(FM)
 		xSb = xSb + temp'*temp;
 	end
 
+    
 	% LDA algorithm
-	[V, D] = eig(xSb, xSw);
-	val = diag(D);
-	val(imag(val)~=0, 1) = 0;
-	[~, idx] = sort(val, 'descend');
-
-	DIM = 4;
-	LDA_A = zeros(a, DIM);
-	for i=1:DIM
-		LDA_A(:,i) = V(:, idx(i));
-	end
+	[old_Vector, old_Value] = eig(xSb, xSw);
+	[Vector, Value] = sortVectorValue(old_Vector, old_Value);
+	LDA_A = Vector(:, 1:8);
 
 	LDA_center = center * LDA_A;
 
@@ -483,5 +490,8 @@ function accuracy = LDA_classfy(FM)
 			end
 		end
 	end
+
+	% LDA_center
+	% LDA_A
 
 	accuracy = right/total;
